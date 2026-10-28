@@ -5,7 +5,9 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { open, DB_PATH } from '../src/db.js';
 
-const DIR = new URL('../migrations/', import.meta.url).pathname;
+let dir_temp = new URL('../migrations/', import.meta.url).pathname;
+dir_temp = dir_temp.replace(/^\/([A-Z]:)/, '$1'); // Windows fix
+const DIR = dir_temp;
 const db = open();
 db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
 
