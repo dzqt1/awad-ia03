@@ -32,3 +32,136 @@ Pages do not move under the client. While a client walks the pages, orders place
 
 **Nguyên nhân:** Các test multi-instance bị fail trên Windows do test khởi chạy migration bằng spawnSync('npm', ...). Trên Windows, npm thường là npm.cmd hoặc npm.ps1, nên Node không resolve được lệnh npm khi subprocess không bật shell: true. Vì migration không được khởi chạy, database phục vụ test multi-instance không được chuẩn bị, khiến hai test retry qua instance khác và cursor cross-instance bị cancel trước khi kiểm tra logic API. Khi đổi sang test chạy môi trường Linux, tất cả test đã pass.
 
+**Kết luận:** Agent đã cài đặt chính xác như CONTRACT.md và pass 29/29 khi chạy `npm run contract` trong lần thử đầu tiên.
+
+## Các ý có thể được agent đọc theo 2 cách:
+
+1. “Two bodies are the same when they are equal as JSON values: key order and whitespace do not matter, any other difference does.”
+
+**Các cách hiểu:**
+   - Chỉ thứ tự của key trong object và whitespace bị bỏ qua; thứ tự phần tử trong array vẫn có ý nghĩa.
+   - Mọi thứ tự đều bị bỏ qua, bao gồm cả thứ tự phần tử trong array.
+
+**Lựa chọn của agent:**
+   Cách 1. Object được canonicalize đệ quy bằng cách sắp xếp key; array vẫn giữ nguyên thứ tự.
+   *Lý do:* Contract nói `items` phải giữ thứ tự client gửi. Nếu bỏ qua thứ tự array thì hai order khác nhau có thể bị coi là cùng request và replay nhầm response.
+
+**Bổ sung cho CONTRACT.md:**
+   Object member order và whitespace không ảnh hưởng đến idempotency. Array order có ảnh hưởng; các phần tử trong array được so sánh theo đúng thứ tự.
+
+2. “Same key while the first request is still being processed → `409 idempotency-key-in-flight`.”
+
+**Các cách hiểu:**
+   - Chỉ các request trong cùng một process mới được coi là đang xử lý.
+   - Tất cả instance dùng chung database phải phát hiện trạng thái đang xử lý.
+
+**Lựa chọn của agent:**
+   Dùng khóa đang xử lý ở mức process. Sau khi order thành công, record idempotency được lưu vào SQLite và có thể replay từ instance khác.
+   *Lý do:* Contract yêu cầu record đã hoàn thành phải được lưu bền vững, nhưng không định nghĩa schema hoặc cơ chế khôi phục cho request chưa hoàn thành. Không lưu trạng thái in-flight vào database cũng tránh giữ lại request vĩnh viễn nếu process bị crash.
+
+**Bổ sung cho CONTRACT.md:**
+   Việc phát hiện `idempotency-key-in-flight` là bắt buộc trong cùng một process. Sau khi response `201` được commit, record idempotency phải được chia sẻ qua database để mọi instance có thể replay.
+
+3. “A stored key is kept for at least 24 hours.”
+
+**Các cách hiểu:**
+   - Key không được xóa trước 24 giờ, nhưng có thể giữ lâu hơn hoặc vĩnh viễn.
+   - Key nên được xóa ngay sau 24 giờ.
+
+**Lựa chọn của agent:**
+   Chọn cách 1 và giữ record lâu dài.
+   *Lý do:* Cụm “at least” chỉ đặt thời gian tối thiểu, không đặt thời gian tối đa. Giữ lâu hơn giúp retry cũ không vô tình tạo order thứ hai.
+
+**Bổ sung cho CONTRACT.md:**
+   Server phải giữ record idempotency ít nhất 24 giờ và được phép giữ lâu hơn. Nếu record bị xóa sau thời hạn này, retry sau đó có thể được xử lý như request mới.
+
+4. “A cursor stays valid for at least 24 hours.”
+  
+**Các cách hiểu:**
+   - Cursor phải hoạt động ít nhất 24 giờ, kể cả sau khi service restart hoặc request chuyển sang instance khác.
+   - Cursor chỉ cần hoạt động khi process giữ state của cursor còn chạy.
+
+**Lựa chọn của agent:**
+   Cursor trong src/v1.js chứa các thông tin cần thiết: order ID cuối cùng, snapshot ID và `tableId`. Vì vậy nó không phụ thuộc vào memory của process.
+   *Lý do:* Cách này đáp ứng tốt hơn yêu cầu cursor sống ít nhất 24 giờ và hỗ trợ nhiều instance cùng database.
+
+**Bổ sung cho CONTRACT.md:**
+   Cursor hợp lệ phải dùng được ít nhất 24 giờ, kể cả sau process restart và khi request được xử lý bởi instance khác dùng chung database.
+
+5. “Use a cursor with the same `tableId` it came from.”
+
+**Các cách hiểu:**
+   - Cursor có thể dùng lại với bất kỳ `tableId` nào vì nó chỉ đại diện cho vị trí trong danh sách.
+   - `tableId` là một phần của context cursor và không được thay đổi.
+
+**Lựa chọn của agent:**
+   Chọn cách 2. Cursor tạo cho toàn bộ bảng chỉ dùng lại khi không có `tableId`; cursor tạo cho `tableId=N` chỉ dùng lại với `tableId=N`.
+   *Lý do:* Nếu thay đổi bộ lọc giữa các trang, client có thể bỏ sót hoặc lặp order, phá vỡ yêu cầu pagination ổn định. 
+
+**Bổ sung cho CONTRACT.md:**
+   `tableId` là một phần của cursor context. Cursor không có `tableId` chỉ được dùng cho truy vấn không có `tableId`; cursor có `tableId=N` chỉ được dùng với `tableId=N`.
+
+6. “A cursor the server cannot read is `400 validation`.”
+   
+**Các cách hiểu:**
+   - Chỉ cursor bị hỏng encoding hoặc JSON mới được coi là không đọc được.
+   - Cursor có thể decode được nhưng chứa field sai, ID sai hoặc không khớp filter cũng là không đọc được.
+
+**Lựa chọn của agent:**
+   Chọn cách 2. Implementation từ chối cursor bị lỗi encoding, JSON, cấu trúc, ID, `snapshotId` hoặc không khớp `tableId`.
+   *Lý do:* Client coi cursor là opaque và không được tự xây dựng. Client không thể phân biệt cursor hỏng về syntax với cursor có nội dung không hợp lệ.
+
+**Bổ sung cho CONTRACT.md:**
+   Cursor được coi là không đọc được nếu không decode được, không phải object hợp lệ, chứa ID/filter không hợp lệ hoặc không khớp với `tableId` của request. Tất cả trường hợp này trả về `400 validation` với `parameter: "cursor"`.
+
+7. “The server ignores request fields it does not know.” và “Every field follows the table above…”
+
+**Các cách hiểu:**
+   - Field không biết được bỏ qua; chỉ các field đã định nghĩa mới được validate.
+   - “Every field” yêu cầu mọi field client gửi đều phải nằm trong contract.
+
+**Lựa chọn của agent:**
+   Chọn cách 1. Field lạ bị bỏ qua, còn field đã biết vẫn được validate.
+   *Lý do:* Section 1 nói rõ server bỏ qua request field không biết. Điều này cũng phù hợp với nguyên tắc versioning additive trong Section 5.
+
+**Bổ sung cho CONTRACT.md:**
+   Validation chỉ áp dụng cho các field được định nghĩa trong contract. Các field dư ở request object và item object đều bị bỏ qua.
+
+8. “Request headers: `Content-Type: application/json` and `Idempotency-Key`…”
+
+**Các cách hiểu:**
+   - Cả hai header đều bắt buộc; thiếu hoặc sai `Content-Type` phải bị reject.
+   - Đây chỉ là mô tả format dự kiến; contract chỉ định rõ quy tắc lỗi cho `Idempotency-Key`.
+
+**Lựa chọn của agent:**
+   Implementation kiểm tra `Idempotency-Key`, nhưng không reject chỉ vì `Content-Type` bị thiếu hoặc khác giá trị. Body vẫn phải parse được thành JSON.
+   *Lý do:* Contract định nghĩa riêng lỗi `idempotency-key-missing`, nhưng không định nghĩa problem type hoặc status cho `Content-Type` sai.
+
+**Bổ sung cho CONTRACT.md:**
+   Content-Type: application/json là format được khuyến nghị nhưng không được validate độc lập; server chỉ kiểm tra body có phải JSON hợp lệ hay không.
+
+9. “validation listing every broken field.”
+
+**Các cách hiểu:**
+   - Chỉ cần có đủ mọi lỗi; thứ tự các phần tử trong `errors` không quan trọng.
+   - Các lỗi phải theo thứ tự field trong request hoặc theo bảng contract.
+
+**Lựa chọn của agent:**
+   Chọn thứ tự xác định: `tableId`, `items`, sau đó từng item theo index, và trong mỗi item là `menuItemId` rồi `qty`.
+   *Lý do:* Contract bắt buộc trả về tất cả lỗi nhưng không mô tả thứ tự. Thứ tự ổn định giúp response dễ kiểm tra và dễ debug mà không làm thay đổi ý nghĩa.
+
+**Bổ sung cho CONTRACT.md:**
+   `errors` phải có một entry cho mỗi lỗi. Các entry được sắp xếp theo vị trí field trong JSON: field cấp cao trước, sau đó theo thứ tự index của `items` và thứ tự field được liệt kê trong contract.
+
+10. “`nextCursor` is `null` if and only if there are no more orders after this page.”
+
+**Các cách hiểu:**
+   - Không còn order nào hiện tại trong database.
+   - Không còn order nào trong snapshot pagination đã được tạo từ trang đầu tiên.
+
+**Lựa chọn của agent:**
+   Chọn cách 2. Cursor giữ `snapshotId`, là order ID lớn nhất tại thời điểm lấy trang đầu tiên. Các order mới hơn bị loại khỏi các trang sau.
+   *Lý do:* Contract cũng nói order tạo sau khi lấy trang đầu không được xuất hiện ở các trang sau. Nếu query theo database hiện tại mà không có snapshot, dữ liệu mới có thể làm thay đổi vị trí và gây duplicate hoặc missing order.
+
+**Bổ sung cho CONTRACT.md:**
+   “No more orders” được đánh giá trên snapshot được tạo khi lấy trang đầu tiên, không phải trên toàn bộ order được thêm vào database sau thời điểm đó. Các order mới hơn snapshot bị loại khỏi toàn bộ chuỗi pagination đó.
