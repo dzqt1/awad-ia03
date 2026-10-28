@@ -26,13 +26,19 @@ Pages do not move under the client. While a client walks the pages, orders place
 
 ## Các test đã fail trong contract-run-1.txt:
 
-✖ §4.2 a retry that lands on the other instance is still a replay
-✖ §4.4 a cursor from one instance works on the other
-✖ §4 two instances, one database (as in session 4)
+- **✖ §4.2 a retry that lands on the other instance is still a replay**
+   + *Contract yêu cầu:* "Same key, same body → the **stored** response: status `201`, the identical body, the same `Location`, plus the header **`Idempotent-Replayed: true`**. No new order. The first, original response does not carry that header."
+   + Test không thực sự chạy đến phần kiểm tra replay vì test cha không chạy được migration trên Windows, do test bị cancelled nên không thể chứng minh API sai.
+   + *Cách sửa Contract:* "Khi nhiều instances chia sẻ cùng 1 database, retry gửi đến bất kỳ instance nào cũng phải trả lại response đã được lưu."
+- **✖ §4.4 a cursor from one instance works on the other**
+   + *Contract yêu cầu:* "A cursor is opaque: the client stores it and sends it back unchanged, and never builds one.", "A cursor stays valid for at least 24 hours."
+   + Tương tự như trên, test bị cancelled nên không thể chứng minh API sai.
+   + *Cách sửa Contract:* "Một cursor được trả về từ một API instance phải đảm bảo sử dụng được bởi instance khác cùng chia sẻ chung database."
+- **✖ §4 two instances, one database (as in session 4)**
+   + Test cha không hoàn thành vì `npm run migrate` được gọi qua `spawnSync('npm', ...)` và không resolve được lệnh `npm` trên Windows, dẫn đến lỗi `npm run migrate failed: undefined` và `null !== 0`.
+   + Đây là lỗi tương thích môi trường chạy test; nó làm hai test multi-instance bên trong bị cancelled, chứ không cho thấy hành vi `/v1` vi phạm contract.
 
-**Nguyên nhân:** Các test multi-instance bị fail trên Windows do test khởi chạy migration bằng spawnSync('npm', ...). Trên Windows, npm thường là npm.cmd hoặc npm.ps1, nên Node không resolve được lệnh npm khi subprocess không bật shell: true. Vì migration không được khởi chạy, database phục vụ test multi-instance không được chuẩn bị, khiến hai test retry qua instance khác và cursor cross-instance bị cancel trước khi kiểm tra logic API. Khi đổi sang test chạy môi trường Linux, tất cả test đã pass.
-
-**Kết luận:** Agent đã cài đặt chính xác như CONTRACT.md và pass 29/29 khi chạy `npm run contract` trong lần thử đầu tiên.
+**Kết luận:** Lần chạy đầu tiên có 27 test pass và 2 test bị cancelled vì lỗi khởi chạy migration trên Windows. Không có test nào bị assertion failure do hành vi API. Sau khi chạy trong môi trường Linux, lần chạy cuối pass 29/29.
 
 ## Các ý có thể được agent đọc theo 2 cách:
 
