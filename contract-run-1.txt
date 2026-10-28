@@ -1,0 +1,103 @@
+
+> awad-api-contract-starter@1.0.0 contract
+> node --test --test-reporter=spec test/contract.test.js
+
+(node:34464) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Γû╢ ┬º2 errors
+  Γ£ö ┬º2 an unknown /v1 path is a 404 problem (65.6433ms)
+  Γ£ö ┬º2 malformed JSON is 400 invalid-json (7.8207ms)
+  Γ£ö ┬º2 validation lists every broken field, with a JSON Pointer each (4.9834ms)
+  Γ£ö ┬º2 a JSON body that is not an object is a validation error, not a crash (12.2301ms)
+Error: no such table: orders
+    at getOrder (file:///D:/N4_HK1_AWAD/HW/IA03/awad-api-contract-starter/src/v1.js:50:20)
+    at handleV1 (file:///D:/N4_HK1_AWAD/HW/IA03/awad-api-contract-starter/src/v1.js:140:23)
+    at file:///D:/N4_HK1_AWAD/HW/IA03/awad-api-contract-starter/src/v1.js:260:11
+    at handle (file:///D:/N4_HK1_AWAD/HW/IA03/awad-api-contract-starter/src/app.js:69:17)
+    at Server.<anonymous> (file:///D:/N4_HK1_AWAD/HW/IA03/awad-api-contract-starter/src/app.js:79:5)
+    at Server.emit (node:events:508:28)
+    at parserOnIncoming (node:_http_server:1186:12)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:122:17) {
+  code: 'ERR_SQLITE_ERROR',
+  errcode: 1,
+  errstr: 'SQL logic error'
+}
+  Γ£ö ┬º2 a 500 is a problem that says nothing about the inside (8.9771ms)
+Γ£ö ┬º2 errors (103.4465ms)
+Γû╢ ┬º4.1 menu
+  Γ£ö ┬º4.1 GET /v1/menu/{id} returns priceVnd in dong (7.4139ms)
+  Γ£ö ┬º4.1 unknown or malformed id is 404 not-found (5.3686ms)
+Γ£ö ┬º4.1 menu (13.0885ms)
+Γû╢ ┬º4.2 placing an order
+  Γ£ö ┬º4.2 201, Location, totals in dong, lines in the order sent (6.3883ms)
+  Γ£ö ┬º4.2 unknown menu item is 422 with a pointer per unknown line (2.8389ms)
+  Γ£ö ┬º4.2 rules on fields: tableId 1..200, 1..20 lines, qty 1..20 (10.4748ms)
+  Γ£ö ┬º4.2 a unit price is the price when the order was placed (7.3084ms)
+  Γ£ö ┬º4.3 GET /v1/orders/{id} of an unknown order is 404 not-found (2.4859ms)
+Γ£ö ┬º4.2 placing an order (30.0234ms)
+Γû╢ ┬º4.2 idempotency
+  Γ£ö ┬º4.2 no Idempotency-Key is 400 and creates nothing (8.6604ms)
+  Γ£ö ┬º4.2 the key is checked before the body (2.2661ms)
+  Γ£ö ┬º4.2 a retry with the same key and body replays the first response (5.797ms)
+  Γ£ö ┬º4.2 "the same body" means the same JSON value: key order and whitespace do not matter (6.4535ms)
+  Γ£ö ┬º4.2 the same key with a different body is 422 and creates nothing (4.9699ms)
+  Γ£ö ┬º4.2 only a 201 is stored: after a 4xx the same key may be used with a fixed body (7.17ms)
+  Γ£ö ┬º4.2 the same key sent five times at once places one order (15.5087ms)
+Γ£ö ┬º4.2 idempotency (51.4013ms)
+Γû╢ ┬º4.4 pagination
+  Γ£ö ┬º4.4 newest first; every order exactly once; default page size 20 (37.5999ms)
+  Γ£ö ┬º4.4 nextCursor is null exactly when there is nothing more (14.6416ms)
+  Γ£ö ┬º4.4 an order placed between two pages does not shift the next page (12.5012ms)
+  Γ£ö ┬º4.4 out-of-range limit is an error, not clamped (4.4801ms)
+  Γ£ö ┬º4.4 a cursor the server cannot read is 400 validation (2.9374ms)
+Γ£ö ┬º4.4 pagination (72.4584ms)
+Γû╢ ┬º5 versions and the legacy API
+  Γ£ö ┬º5 legacy GET /menu/{id} is unchanged, and announces its end (4.0713ms)
+  Γ£ö ┬º5 legacy errors keep their old shape ΓÇö the new error model is for /v1 only (2.4196ms)
+  Γ£ö ┬º5 a price written through the legacy API reads the same through v1 (2.9522ms)
+Γ£ö ┬º5 versions and the legacy API (9.701ms)
+Γû╢ ┬º4 two instances, one database (as in session 4)
+  Γ£û ┬º4.2 a retry that lands on the other instance is still a replay
+  Γ£û ┬º4.4 a cursor from one instance works on the other
+Γ£û ┬º4 two instances, one database (as in session 4) (4.31ms)
+Γä╣ tests 29
+Γä╣ suites 7
+Γä╣ pass 27
+Γä╣ fail 0
+Γä╣ cancelled 2
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 430.4378
+
+Γ£û failing tests:
+
+test at test\contract.test.js:371:3
+Γ£û ┬º4.2 a retry that lands on the other instance is still a replay
+  'test did not finish before its parent and was cancelled'
+
+test at test\contract.test.js:383:3
+Γ£û ┬º4.4 a cursor from one instance works on the other
+  'test did not finish before its parent and was cancelled'
+
+test at test\contract.test.js:331:1
+Γ£û ┬º4 two instances, one database (as in session 4) (4.31ms)
+  AssertionError [ERR_ASSERTION]: npm run migrate failed: undefined
+  
+  null !== 0
+  
+      at SuiteContext.<anonymous> (file:///D:/N4_HK1_AWAD/HW/IA03/awad-api-contract-starter/test/contract.test.js:363:12)
+      at TestHook.runInAsyncScope (node:async_hooks:214:14)
+      at TestHook.run (node:internal/test_runner/test:1106:25)
+      at TestHook.run (node:internal/test_runner/test:1427:18)
+      at TestHook.run (node:internal/util:583:20)
+      at Suite.runHook (node:internal/test_runner/test:1024:20)
+      at Suite.run (node:internal/test_runner/test:1510:18)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
